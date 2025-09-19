@@ -106,3 +106,49 @@ def rank_centralities(centrality_dict):
     '''
     centrality_list = []
     return sorted(centrality_dict.items(), key=lambda item: item[1], reverse=True)
+
+
+
+
+
+def get_adjacent_comms(G, node, coms):
+  """takes a node, a graph and a list of communities, then returns the communities that are adjacent to the community the node is in."""
+    # identify com for node:
+    for com in coms:
+        if node in com:
+            com_of_interest = com
+    adj_comms = []
+    for node in com_of_interest:
+        for neigh in G.neighbors(node):
+            for comm in coms:
+                if (neigh in comm) and (comm not in adj_comms):
+                    adj_comms.append(comm)
+    # this likely contains the community of interest, we want to remove it:
+    for i in range(len(adj_comms)):
+        if adj_comms[i] == com_of_interest:
+            kill_i = i
+    del adj_comms[kill_i]
+    return adj_comms
+
+
+
+
+
+
+def print_pairwise_shortest_paths(nodes, G):
+    """takes a list of nodes and a network, then prints out the pairwise shortest paths between them as well as their lengths"""
+    print("Pairwise shortest-paths between BCMB seeds:")
+    # iterate over all nodes
+    for i in range(len(nodes)):
+        # iterate over every pair
+        for j in range(i+1, len(nodes)):
+            a, b = nodes[i], nodes[j]
+            # check that they're in the graph and connected
+            if a in G and b in G and nx.has_path(G, a, b):
+                # determine shortest paths, as well as the length of them and how many there are.
+                p = list(nx.all_shortest_paths(G, a, b))
+                d = len(p[0]) - 1
+                n = len(p)
+                print(f"  node {a} to {b}: has distance: {d}, with {n} path(s): {p}")
+            else:
+                print(f"  node {a} to {b} has no path (disconnected after threshold), or either {a} or {b} are not in the graph.")
