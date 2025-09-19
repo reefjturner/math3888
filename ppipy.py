@@ -3,34 +3,6 @@ import pandas as pd
 import networkx as nx
 
 
-class centrality:
-    """Class to determine centrality measures"""
-    def rank(d):
-        # thank you stack overflower user Devin Jeanpierre for the dictionary sorting!
-        return [(k, v) for k, v in sorted(d.items(), key=lambda item: item[1], reverse=True)]
-
-        # and thank you to stack overflow user Mark Longair for the dictionary slicing!
-    def degree_centrality(G, nodes, N):
-        d = nx.degree_centrality(G)
-        return centrality.rank({k: d[k] for k in nodes})[0:N]
-
-    def pagerank(G, nodes, N):
-        return self.rank({k: nx.pagerank(G)[k] for k in nodes})[0:N]
-
-    def eigenvector_centrality(G, nodes, N):
-        return self.rank({k: nx.eigenvector_centrality(G)[k] for k in nodes})[0:N]
-
-    def katz_centrality(G, nodes, N):
-        return self.rank({k: nx.katz_centrality(G)[k] for k in nodes})[0:N]
-
-    def betweenness_centrality(G, nodes, N):
-        d = nx.betweenness_centrality(G)
-        return self.rank({k: d[k] for k in nodes}).items()[0:N]
-
-    def subgraph_centrality(G, nodes, N):
-        return self.rank({k: nx.subgraph_centrality(G)[k] for k in nodes})[0:N]
-
-
 def initialise_PPI_network(protein_network, essential_proteins, remove_essentials=False, threshold=700.0, 
                        largest_connected_component=False):
     '''
