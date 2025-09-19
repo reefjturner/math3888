@@ -167,9 +167,12 @@ def print_pairwise_shortest_paths(nodes, G):
     
     Parameters
     ----------
-    nodes : A list of nodes that the pairwise
-    shortest paths are to be computed for.
-    G : A network that the nodes exist on.
+    nodes : list
+      A list of nodes that the pairwise shortest 
+      paths are to be computed for.
+    
+    G : NetworkX graph
+      A network that the nodes exist on.
 
     Returns
     -------
@@ -302,9 +305,9 @@ def leiden_katz_analysis(G0, bio_proteins, custom_betas, essential_proteins, res
 def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0], 
                         ['YPL031C', 90.0], ['YPR074C', 70.0]]), alpha= 0.85, beta=1.0, resolution=5.0, seed=None):
     '''
-    A modification to the standard Katz centrality
-    where a specified important node has an
-    larger base beta value in the algorithm.
+    A modification to the standard pagerank
+    algorithm where a specified important node 
+    has a larger base beta value in the algorithm.
     - Reef.
 
     Parameters
@@ -313,16 +316,13 @@ def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0]
         PPI network as given by the 
         initialise_PPI_network function.
 
-    important_node : string, optional (default='YMR205C')
-        A list of specfied important nodes in the 
+    important_node : dict, optional (default=dict[['YMR205C', 100.0], ['YFL025C', 50.0], 
+                        ['YPL031C', 90.0], ['YPR074C', 70.0]])
+        A dictionary of specfied important nodes in the 
         PPI network. Note, it is assumed that
         all important nodes are connected.
 
-    importance : float, optional (default=10.0)
-        Specified importance of the important
-        node.
-
-    alpha : float, optional (default=0.002)
+    alpha : float, optional (default=0.85)
         Alpha value to be used in the pagerank
         algorithm. Needs to be small enough
         for the algorithm to converge.
