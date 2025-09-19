@@ -110,6 +110,16 @@ def rank_centralities(centrality_dict):
 
     Parameters
     ----------
+    centrality_dict : dict
+        Dictionary of nodes and their associated 
+        centralities.
+
+    Returns
+    -------
+    sorted_centralities : dict
+        Dictionary of nodes and their associated 
+        centralities, ranked from highest to 
+        lowest.
     '''
     centrality_list = []
     return sorted(centrality_dict.items(), key=lambda item: item[1], reverse=True)
@@ -289,4 +299,78 @@ def leiden_katz_analysis(G0, bio_proteins, custom_betas, essential_proteins, res
         print("\n None of the target proteins were found in any Leiden community.")
 
 
+def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0], 
+                        ['YPL031C', 90.0], ['YPR074C', 70.0]]), alpha= 0.85, beta=1.0, resolution=5.0, seed=None):
+    '''
+    A modification to the standard Katz centrality
+    where a specified important node has an
+    larger base beta value in the algorithm.
+    - Reef.
+
+    Parameters
+    ----------
+    G : NetworkX graph
+        PPI network as given by the 
+        initialise_PPI_network function.
+
+    important_node : string, optional (default='YMR205C')
+        A list of specfied important nodes in the 
+        PPI network. Note, it is assumed that
+        all important nodes are connected.
+
+    importance : float, optional (default=10.0)
+        Specified importance of the important
+        node.
+
+    alpha : float, optional (default=0.002)
+        Alpha value to be used in the pagerank
+        algorithm. Needs to be small enough
+        for the algorithm to converge.
+
+    beta : float, optional (default=1.0)
+        Default beta value to be used in the pagerank
+        algorithm for unimportant nodes.
+
+    resolution : float, optional (default=5.0)
+        Resolution used in the louvain_communities
+        algorithm. Higher value implies smaller communities.
+
+    seed : bool or int, optional (default=None)
+        Seed to be used in the louvain_communities algorithm.
+
+    Returns
+    -------
+    community_ranks : list
+        List containing the biased pagerank centralities of
+        each community that contains an important node.
+    '''
+    S = [G.subgraph(c).copy() for c in nx.connected_components(G)]
+    important_nodes_list = list(important_nodes.keys())
+    important_node = important_nodes_list[0] # pick out a random important node.
+    # pick out the largest cc containing the important node.
+    for i in range (len(S)):
+        for key in S[i].nodes.keys():
+            if key == important_node:
+                C = S[i]
+                break
+    # reduce to a smaller collection of communities
+    v = nx.community.louvain_communities(C, seed=seed, resolution=resolution)
+    all_communities = [C.subgraph(v[i]).copy() for i in range(0, len(v))] # contain all the communities into their own graph
+    # for each of these communities, do biased pagerank
+    community_ranks = []
+    for i in range(len(v)):
+        V = all_communities[i] 
+        for node in V.nodes():
+            if node in important_nodes:
+                ls = []
+                for key in V.nodes.keys():
+                    if key in important_nodes:
+                        ls.append((key, important_nodes[key]))
+                    else:
+                        ls.append((key, beta))
+                personality_vector = dict(ls)
+                bias_pagerank = nx.pagerank(V, alpha=alpha, personalization=personality_vector)
+                ranks = rank_centralities(bias_pagerank)
+                community_ranks.append(ranks)
+    return community_ranks
 
