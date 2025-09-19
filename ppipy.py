@@ -116,7 +116,21 @@ def rank_centralities(centrality_dict):
 
 
 def get_adjacent_comms(G, node, coms):
-  """takes a node, a graph and a list of communities, then returns the communities that are adjacent to the community the node is in."""
+  '''
+  Takes a node, a graph and a list of 
+  communities, then returns the communities 
+  that are adjacent to the community the node is in.
+
+  Parameters
+  ----------
+  G : networkx graph which the nodes and communities belong on.
+  node : the node of interest
+  coms : the parition of communities.
+
+  Returns
+  -------
+  A list of sets. Each set is a community, so it's a list of communities.
+  '''
     # identify com for node:
     for com in coms:
         if node in com:
@@ -136,7 +150,25 @@ def get_adjacent_comms(G, node, coms):
 
 
 def print_pairwise_shortest_paths(nodes, G):
-    """takes a list of nodes and a network, then prints out the pairwise shortest paths between them as well as their lengths"""
+    '''
+    Takes a list of nodes and a network,
+    then prints out the pairwise shortest
+    paths between them as well as their lengths
+    
+    Parameters
+    ----------
+    nodes : A list of nodes that the pairwise
+    shortest paths are to be computed for.
+    G : A network that the nodes exist on.
+
+    Returns
+    -------
+    Nothing, it prints out the results.
+    It will give an initial statement saying
+    which two nodes are being connected,
+    then the distance between them then a
+    list containing lists of shortest paths.
+    '''
     print("Pairwise shortest-paths between BCMB seeds:")
     # iterate over all nodes
     for i in range(len(nodes)):
@@ -149,7 +181,7 @@ def print_pairwise_shortest_paths(nodes, G):
                 p = list(nx.all_shortest_paths(G, a, b))
                 d = len(p[0]) - 1
                 n = len(p)
-                print(f"  node {a} to {b}: has distance: {d}, with {n} path(s): {p}")
+                print(f"  node {a} to {b}: has distance: {d}, with {n} path(s):\n{p}\n")
             else:
                 print(f"  node {a} to {b} has no path (disconnected after threshold), or either {a} or {b} are not in the graph.")
 
