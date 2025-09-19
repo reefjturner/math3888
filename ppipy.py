@@ -2,6 +2,35 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 
+
+class centrality:
+    """Class to determine centrality measures"""
+    def rank(d):
+        # thank you stack overflower user Devin Jeanpierre for the dictionary sorting!
+        return [(k, v) for k, v in sorted(d.items(), key=lambda item: item[1], reverse=True)]
+
+        # and thank you to stack overflow user Mark Longair for the dictionary slicing!
+    def degree_centrality(G, nodes, N):
+        d = nx.degree_centrality(G)
+        return centrality.rank({k: d[k] for k in nodes})[0:N]
+
+    def pagerank(G, nodes, N):
+        return self.rank({k: nx.pagerank(G)[k] for k in nodes})[0:N]
+
+    def eigenvector_centrality(G, nodes, N):
+        return self.rank({k: nx.eigenvector_centrality(G)[k] for k in nodes})[0:N]
+
+    def katz_centrality(G, nodes, N):
+        return self.rank({k: nx.katz_centrality(G)[k] for k in nodes})[0:N]
+
+    def betweenness_centrality(G, nodes, N):
+        d = nx.betweenness_centrality(G)
+        return self.rank({k: d[k] for k in nodes}).items()[0:N]
+
+    def subgraph_centrality(G, nodes, N):
+        return self.rank({k: nx.subgraph_centrality(G)[k] for k in nodes})[0:N]
+
+
 def initialise_PPI_network(protein_network, essential_proteins, remove_essentials=False, threshold=700.0, 
                        largest_connected_component=False):
     '''
@@ -96,6 +125,7 @@ def initialise_yeast_PPI_network(remove_essentials=False, threshold=700.0, large
     essential_nodes = [n for n in protein_network.nodes() if n[5:] in list(df['secondary identifier'])]
     return initialise_PPI_network(protein_network, essential_nodes, remove_essentials=remove_essentials, threshold=threshold, largest_connected_component=largest_connected_component)
 
+
 def rank_centralities(centrality_dict):
     '''
     Given a dict of centrality scores, returns an ordered 
@@ -106,9 +136,6 @@ def rank_centralities(centrality_dict):
     '''
     centrality_list = []
     return sorted(centrality_dict.items(), key=lambda item: item[1], reverse=True)
-
-
-
 
 
 def get_adjacent_comms(G, node, coms):
@@ -129,10 +156,6 @@ def get_adjacent_comms(G, node, coms):
             kill_i = i
     del adj_comms[kill_i]
     return adj_comms
-
-
-
-
 
 
 def print_pairwise_shortest_paths(nodes, G):
