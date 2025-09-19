@@ -1,6 +1,11 @@
 import numpy as np
 import pandas as pd
 import networkx as nx
+import igraph as ig
+import leidenalg
+import scipy as sp
+from scipy.linalg import eigh
+import scipy.sparse.linalg as spla
 
 
 def initialise_PPI_network(protein_network, essential_proteins, remove_essentials=False, threshold=700.0, 
@@ -147,3 +152,109 @@ def print_pairwise_shortest_paths(nodes, G):
                 print(f"  node {a} to {b}: has distance: {d}, with {n} path(s): {p}")
             else:
                 print(f"  node {a} to {b} has no path (disconnected after threshold), or either {a} or {b} are not in the graph.")
+
+
+def leiden_katz_analysis(G0, bio_proteins, custom_betas, essential_proteins, resolution = 10.0, top = 10, SEED=1):
+    """
+    Runs Leiden community detection and Katz centrality analysis on a NetworkX graph.
+
+    Parameters
+    ----------
+    G0 : networkx Graph
+        Protein-protein interaction graph.
+    bio_proteins : list[str]
+        Proteins from bio group.
+    custom_betas : dict[str, float]
+        Custom beta values for specific proteins.
+    essential_proteins : set[str]
+        Set of essential proteins for annotation.
+    resolution : float, optional
+        Resolution parameter for Leiden algorithm (default=10.0).
+    """
+
+    # Check if the proteins are still in the graph
+    print("Proteins in filtered graph?")
+    for p in bio_proteins:
+        print(f"  {p}: {p in G0}")
+
+    print(f"\nGraph has {G0.number_of_nodes()} nodes and {G0.number_of_edges()} edges")
+
+    # Convert to igraph as Leiden only works with igraph objects, not NetworkX graphs.
+    g = ig.Graph.from_networkx(G0)
+
+    # run Leiden community detection
+    partition = leidenalg.find_partition(
+        g,
+        leidenalg.RBConfigurationVertexPartition,
+        resolution_parameter=resolution,
+        seed=SEED
+    )
+
+    # Extract partition into list of lists of node names
+    partition_list = []
+    for comm in partition:
+        comm_nodes = [g.vs[idx]["_nx_name"] for idx in comm]
+        partition_list.append(comm_nodes)
+
+    print(f"\nLeiden found {len(partition_list)} communities (resolution={resolution})")
+    # for i, comm in enumerate(partition_list[:5]):
+    #     print(f"  Community {i}: size={len(comm)}")
+
+    # Analyze only the communities with bio_proteins
+    found_any = False
+    for i, comm in enumerate(partition_list):
+        hits = set(comm) & set(bio_proteins)
+        if hits:
+            found_any = True
+            print(f"\nCommunity {i} contains {hits}, size={len(comm)}")
+
+            # Make a subgraph of this community in NetworkX
+            subG = G0.subgraph(comm)
+
+            # Compute alpha for Katz centrality
+            if subG.number_of_nodes() > 1 and subG.number_of_edges() > 0:
+                A = nx.to_numpy_array(subG, nodelist=list(subG.nodes()))
+                largest_eigval = np.real(spla.eigs(A, k=1, which="LR", return_eigenvectors=False)[0])
+                alpha = 0.9 / largest_eigval
+            else:
+                A = nx.to_numpy_array(subG, nodelist=list(subG.nodes()))
+                alpha = 0.005
+
+            nodes = list(subG.nodes())
+            n = len(nodes)
+
+            # Make the custom beta vector
+            b = np.ones(n)
+            for j, node in enumerate(nodes):
+                if node in custom_betas:
+                    b[j] = float(custom_betas[node])
+
+            # Solve Katz equation: (I - alpha*A)x = b
+            I = np.eye(n)
+            x = np.linalg.solve(I - alpha * A, b)
+
+            # Normalize vector to avoid huge values
+            x = x / np.linalg.norm(x, 2)
+
+            katz = {nodes[j]: x[j] for j in range(n)}
+
+            
+            # Show the top nodes in each imprtant community
+            top10 = sorted(katz.items(), key=lambda kv: kv[1], reverse=True)[:top]
+            print("\nTop ",top," nodes by Katz centrality in this community:")
+            for rank, (node, score) in enumerate(top10, start=1):
+                status = " (essential)" if node in essential_proteins else ""
+                print(f"  {rank}. {node}: {score:.6f}{status}")
+
+            # Print proteins of interest explicitly
+            print("\nProteins of interest in this community:")
+            for p in bio_proteins:
+                if p in katz:
+                    status = " (essential)" if p in essential_proteins else ""
+                    print(f"  {p}: {katz[p]:.6f}{status}")
+
+    if not found_any:
+        print("\n None of the target proteins were found in any Leiden community.")
+
+
+
