@@ -374,3 +374,56 @@ def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0]
                 community_ranks.append(ranks)
     return community_ranks
 
+def visualise_one_community(G, resolution, target_node):
+
+'''
+G is graph; resolution is for partitioning graph; target_node in form 'YXXXXX' 
+'''
+
+  communities = [set(c) for c in nx.community.louvain_communities(G, resolution)]
+  print("This partition created", len(communities), "communities.")
+
+  # find which community target_node is in
+  target_community = next(c for c in communities if target_node in c)
+  print("The node", target_node, "is in a community of size", len(target_community))
+
+  # graph commuinty that is important
+  G0 = G.subgraph(target_community)
+  node_colors = ['red' if n == target_node else 'blue' for n in G0]
+  node_sizes = [200 if n == target_node else 50 for n in G0]
+  nx.draw_kamada_kawai(G0, node_color=node_colors, node_size=node_sizes)
+  plt.show()
+
+def visualise_two_community(G,resolution, target_nodes)
+
+'''
+G is graph; resolution is for partitioning graph; target_nodes in form 'YXXXXX' in a list
+'''
+
+  communities = [set(c) for c in nx.community.louvain_communities(G, resolution)]
+  print("This partition created", len(communities), "communities.")
+  communityA = next(c for c in communities if target_nodes[0] in c)
+  communityB = next(c for c in communities if target_nodes[1] in c)
+  print("The node", target_nodes[0], "is in a community of size", len(communityA))
+  print("The node", target_nodes[1], "is in a community of size", len(communityB))
+
+  # check if the target nodes are in the same community
+  if communityA == communityB:
+      G0 = G.subgraph(communityA)
+      node_colors = ['red' if n == target_node else 'blue' for n in G0]
+      node_sizes = [200 if n == target_node else 50 for n in G0]
+      nx.draw(G0, node_color=node_colors, node_size=node_sizes)
+      plt.show()
+
+  # different communities, draw communities together 
+  else:
+      A, B = set(communityA), set(communityB)
+      G0 = G.subgraph(A | B) 
+
+      # graph formatting
+      node_colors = ['red' if n in target_nodes else 'blue' for n in G0]
+      node_sizes  = [200 if n in target_nodes else 50 for n in G0]
+      edge_colors = ['red' if ((u in A and v in B) or (u in B and v in A)) else 'black' for u, v in G0.edges()]
+
+      nx.draw_spring(G0, node_color=node_colors, node_size=node_sizes, edge_color=edge_colors)
+      plt.show()
