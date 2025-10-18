@@ -1,0 +1,225 @@
+
+
+import networkx as nx
+
+import numpy as np
+import scipy as sp
+import pandas as pd
+from scipy.linalg import eigh
+import scipy.sparse.linalg as spla
+
+import matplotlib.pyplot as plt
+import igraph as ig
+import leidenalg
+
+font = {'family': 'DejaVu Sans',
+        'weight': 'bold',
+        'size':   32}
+
+plt.rc('font', **font)
+
+G0 = nx.read_weighted_edgelist("protein.links.v12.0.txt", comments="#", nodetype=str)
+
+df = pd.read_table("Data - List of essential proteins of saccharomyces cerevisiae (1).csv", sep=",", header=None)
+essential_proteins: set[str] = set(df[1].str.strip())
+
+threshold_score = 700
+for edge in list(G0.edges):
+    weight = list(G0.get_edge_data(edge[0], edge[1]).values())
+    if weight[0] <= threshold_score:
+        G0.remove_edge(edge[0], edge[1])
+
+mapping = {}
+for node in G0.nodes:
+    new_name = node.replace("4932.", "")
+    mapping[node] = new_name
+G0 = nx.relabel_nodes(G0, mapping)
+
+bio_proteins = ["YMR205C", "YFL025C", "YPL031C", "YPR074C"]
+
+custom_betas = {
+    "YMR205C": 100,  # PFK2
+    "YFL025C": 50,   # BST1
+    "YPL031C": 85,   # PHO85
+    "YPR074C": 70    # TKL1
+}
+
+# custom_betas = {
+#     "YMR205C": 1,  # PFK2
+#     "YFL025C": 1,   # BST1
+#     "YPL031C": 1,   # PHO85
+#     "YPR074C": 1    # TKL1
+# }
+
+def leiden_katz_analysis(G0, bio_proteins, custom_betas, essential_proteins, 
+                         resolution=10.0, top=10, SEED=1):
+   
+    # Check if the proteins are still in the graph
+    print("Bio-proteins in filtered graph?")
+    for p in bio_proteins:
+        print(f"  {p}: {p in G0}")
+
+    print(f"\nGraph has {G0.number_of_nodes()} nodes and {G0.number_of_edges()} edges")
+
+    # Convert to igraph for Leiden
+    g = ig.Graph.from_networkx(G0)
+
+    # Run Leiden
+    partition = leidenalg.find_partition(
+        g,
+        leidenalg.RBConfigurationVertexPartition,
+        resolution_parameter=resolution,
+        seed=SEED
+    )
+
+    # Convert partition into list of node-name lists
+    partition_list = []
+    for comm in partition:
+        comm_nodes = [g.vs[idx]["_nx_name"] for idx in comm]
+        partition_list.append(comm_nodes)
+
+    print(f"\nLeiden found {len(partition_list)} communities (resolution={resolution})")
+
+    # Collect candidates across all relevant communities
+    all_candidates = []
+    found_any = False
+
+    for i, comm in enumerate(partition_list):
+        hits = set(comm) & set(bio_proteins)
+        if not hits:
+            continue
+        found_any = True
+        print(f"\nCommunity {i} contains {hits}, size={len(comm)}")
+
+        # Subgraph of this community
+        subG = G0.subgraph(comm)
+
+        # Compute alpha for Katz
+        if subG.number_of_nodes() > 1 and subG.number_of_edges() > 0:
+            A = nx.to_numpy_array(subG, nodelist=list(subG.nodes()))
+            largest_eigval = np.real(
+                spla.eigs(A, k=1, which="LR", return_eigenvectors=False)[0]
+            )
+            alpha = 0.9 / largest_eigval
+        else:
+            A = nx.to_numpy_array(subG, nodelist=list(subG.nodes()))
+            alpha = 0.005
+
+        nodes = list(subG.nodes())
+        n = len(nodes)
+
+        # Custom beta vector
+        b = np.ones(n)
+        for j, node in enumerate(nodes):
+            if node in custom_betas:
+                b[j] = float(custom_betas[node])
+
+        # Solve Katz equation: (I - alpha*A)x = b
+        I = np.eye(n)
+        x = np.linalg.solve(I - alpha * A, b)
+
+        # Normalize
+        x = x / np.linalg.norm(x, 2)
+        katz = {nodes[j]: x[j] for j in range(n)}
+
+        # Compute distance + bio-protein neighbor count 
+        distances = {n: float("inf") for n in nodes}
+        for bp in hits:
+            lengths = nx.single_source_shortest_path_length(subG, bp, cutoff=2)
+            for node, d in lengths.items():
+                if d < distances[node]:
+                    distances[node] = d
+
+        bio_neighbors = {}
+        for node in nodes:
+            if node not in hits:
+                bio_neighbors[node] = len(set(subG.neighbors(node)) & hits)
+
+        # Build candidate list (excluding bio-proteins themselves)
+        candidates = []
+        for node in nodes:
+            if node in hits:
+                continue
+            candidates.append((
+                node,
+                katz[node],
+                distances[node] if distances[node] != float("inf") else None,
+                bio_neighbors.get(node, 0),
+                node in essential_proteins
+            ))
+
+        # Sort candidates in this community by Katz
+        candidates.sort(key=lambda x: x[1], reverse=True)
+
+        print("\nTop candidate proteins in this community:")
+        for rank, (node, score, dist, overlap, is_essential) in enumerate(candidates[:top], 1):
+            dist_str = dist if dist is not None else "NA"
+            status = " (essential)" if is_essential else ""
+            print(f"  {rank}. {node}: Katz={score:.6f}, dist={dist_str}, "
+                  f"bio_links={overlap}{status}")
+
+        # Print the bio-proteins explicitly
+        print("\nBio-proteins in this community:")
+        for p in bio_proteins:
+            if p in katz:
+                status = " (essential)" if p in essential_proteins else ""
+                print(f"  {p}: {katz[p]:.6f}{status}")
+
+        # Collect for global suggestions
+        all_candidates.extend(candidates)
+
+    if not found_any:
+        print("\nNone of the bio-proteins were found in any Leiden community.")
+        return
+
+    # Global suggestions across all communities
+    # Suggested proteins are ranked using a composite score:
+    #
+    # - Normalized Katz: influence of the protein in its community (scaled 0–1).
+    # - Overlap score: number of direct bio-protein connections (bio_links),
+    #   divided by the maximum bio-protein connections across all candidates.
+    # - Proximity score: closeness to the nearest bio-protein
+    #   (dist=1 → 1.0, dist=2 → 0.5, farther → 0).
+    #
+    # Final score = 0.5 * Normalized Katz 
+    #             + 0.3 * Overlap score 
+    #             + 0.2 * Proximity score
+    #
+    # Proteins with the highest final scores are suggested since they are
+    # influential (high Katz), close to bio-proteins (low distance),
+    # and especially those that connect to multiple bio-proteins (high overlap).
+
+    max_katz = max([c[1] for c in all_candidates]) if all_candidates else 1.0
+    max_links = max([c[3] for c in all_candidates]) if all_candidates else 1
+
+    suggestions = []
+    for node, score, dist, links, is_essential in all_candidates:
+        katz_norm = score / max_katz if max_katz > 0 else 0
+        prox_score = 1.0 if dist == 1 else (0.5 if dist == 2 else 0.0)
+        overlap_score = links / max(1, max_links)
+        final = 0.5 * katz_norm + 0.3 * overlap_score + 0.2 * prox_score
+        suggestions.append((node, final, score, dist, links, is_essential))
+
+    # Sort by the final composite score
+    suggestions.sort(key=lambda x: x[1], reverse=True)
+
+    print("\nSuggested proteins for further investigation (global):")
+    for rank, (node, final, katz_val, dist, links, essential) in enumerate(suggestions[:top], 1):
+        status = " (essential)" if essential else ""
+        dist_str = dist if dist is not None else "NA"
+        print(f"  {rank}. {node}: final={final:.3f}, Katz={katz_val:.6f}, "
+              f"dist={dist_str}, bio_links={links}{status}")
+        
+    top_suggestions = [(node, final) for (node, final, katz_val, dist, links, essential) in suggestions[:top]]
+    return top_suggestions
+
+
+
+
+
+nodes_to_remove = [n for n in G0.nodes if n in essential_proteins]
+G0.remove_nodes_from(nodes_to_remove)
+print(f"Removed {len(nodes_to_remove)} essential proteins.")
+
+
+print(leiden_katz_analysis(G0, bio_proteins, custom_betas, essential_proteins, resolution=10.0, top = 1000, SEED=1))
