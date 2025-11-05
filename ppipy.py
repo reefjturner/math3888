@@ -302,12 +302,13 @@ def leiden_katz_analysis(G0, bio_proteins, custom_betas, essential_proteins, res
         print("\n None of the target proteins were found in any Leiden community.")
 
 
+
 def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0], 
-                        ['YPL031C', 90.0], ['YPR074C', 70.0]]), alpha= 0.85, beta=1.0, resolution=5.0, seed=None):
+                        ['YPL031C', 90.0], ['YPR074C', 70.0]]), alpha= 0.85, beta=1.0, resolution=5.0, seed=None, louvain=True):
     '''
-    A modification to the standard pagerank
-    algorithm where a specified important node 
-    has a larger base beta value in the algorithm.
+    A modification to the standard Katz centrality
+    where a specified important node has an
+    larger base beta value in the algorithm.
     - Reef.
 
     Parameters
@@ -316,13 +317,16 @@ def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0]
         PPI network as given by the 
         initialise_PPI_network function.
 
-    important_node : dict, optional (default=dict[['YMR205C', 100.0], ['YFL025C', 50.0], 
-                        ['YPL031C', 90.0], ['YPR074C', 70.0]])
-        A dictionary of specfied important nodes in the 
+    important_node : string, optional (default='YMR205C')
+        A list of specfied important nodes in the 
         PPI network. Note, it is assumed that
         all important nodes are connected.
 
-    alpha : float, optional (default=0.85)
+    importance : float, optional (default=10.0)
+        Specified importance of the important
+        node.
+
+    alpha : float, optional (default=0.002)
         Alpha value to be used in the pagerank
         algorithm. Needs to be small enough
         for the algorithm to converge.
@@ -343,6 +347,9 @@ def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0]
     community_ranks : list
         List containing the biased pagerank centralities of
         each community that contains an important node.
+
+    communities : list
+        List containing each community.
     '''
     S = [G.subgraph(c).copy() for c in nx.connected_components(G)]
     important_nodes_list = list(important_nodes.keys())
@@ -358,9 +365,11 @@ def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0]
     all_communities = [C.subgraph(v[i]).copy() for i in range(0, len(v))] # contain all the communities into their own graph
     # for each of these communities, do biased pagerank
     community_ranks = []
+    important_communities = []
     for i in range(len(v)):
         V = all_communities[i] 
         for node in V.nodes():
+            flag = True
             if node in important_nodes:
                 ls = []
                 for key in V.nodes.keys():
@@ -369,10 +378,13 @@ def bias_pagerank(G, important_nodes=dict([['YMR205C', 100.0], ['YFL025C', 50.0]
                     else:
                         ls.append((key, beta))
                 personality_vector = dict(ls)
-                bias_pagerank = nx.pagerank(V, alpha=alpha, personalization=personality_vector)
-                ranks = rank_centralities(bias_pagerank)
-                community_ranks.append(ranks)
-    return community_ranks
+                if flag:
+                    important_communities.append(V)
+                    bias_pagerank = nx.pagerank(V, alpha=alpha, personalization=personality_vector)
+                    ranks = rank_centralities(bias_pagerank)
+                    community_ranks.append(ranks)
+                    flag = False
+    return community_ranks, important_communities
 
 def visualise_one_community(G, resolution, target_node):
 
